@@ -29,7 +29,10 @@ it is **not**:
 
 ## Features in this MVP
 
-- **Magic-link sign-in** — no passwords.
+- **Email + password sign-in** — no email round-trip. Turn off *Confirm email* under
+  Supabase → Authentication → Providers → Email and account creation is instant; leave it
+  on and Supabase sends one confirmation link, after which it's password-only. (The
+  `/auth/confirm` and `/auth/callback` routes are kept so that link resolves either way.)
 - **Sources** — add accounts, blogs, and feeds; organize by category and priority; live
   RSS/Atom sync with a "Sync now" button and per-source status/error tracking.
 - **Topics** — define keywords, phrases, and areas of interest per topic, with priority,
@@ -162,6 +165,7 @@ Add `ANTHROPIC_API_KEY` to switch on AI analysis and discovery, and
 [scheduled sweeps](#scheduling-ingestion--analysis) — without those, sources sync when a
 user clicks "Sync now".
 
-One Supabase setting matters for auth: under **Authentication → URL Configuration**, add
-your deployment origin to the redirect allow-list (e.g. `https://<your-app>.vercel.app/**`)
-so magic-link sign-in returns to the right place.
+Sign-in is email + password, so there's no redirect allow-list to configure. The one
+Supabase setting worth changing: **Authentication → Providers → Email → Confirm email**.
+Off means account creation is immediate with no email at all; on means one confirmation
+link per new account.
