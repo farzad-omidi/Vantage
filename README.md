@@ -1,6 +1,6 @@
 # Vantage
 
-**Live:** not yet deployed — see [Deploying](#deploying).
+**Live:** [vantage-zeta-navy.vercel.app](https://vantage-zeta-navy.vercel.app)
 
 AI-powered social & market intelligence. Monitor accounts and topics across the social web,
 let Claude analyze what's actually relevant, and surface it — with an explanation of why it

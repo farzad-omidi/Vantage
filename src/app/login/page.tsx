@@ -42,7 +42,11 @@ function LoginForm() {
       });
       setBusy(false);
       if (error) {
-        setError(error.message || "Couldn't sign in — check your email and password.");
+        setError(
+          error.message === "Invalid login credentials"
+            ? "Email or password is wrong. If this account was originally created with a sign-in link, it has no password yet — set one under Authentication → Users in Supabase, or sign up with a different email."
+            : error.message || "Couldn't sign in — check your email and password."
+        );
         return;
       }
       router.push(next);
@@ -57,6 +61,18 @@ function LoginForm() {
     setBusy(false);
     if (error) {
       setError(error.message || "Couldn't create that account.");
+      return;
+    }
+
+    // Supabase deliberately doesn't reveal that an email is already registered: it
+    // answers 200 with a stub user carrying an empty `identities` array and creates
+    // nothing. Detect that, or we'd show a "check your email" panel for a
+    // confirmation that is never going to arrive.
+    if (data.user?.identities?.length === 0) {
+      setMode("signin");
+      setError(
+        "An account with that email already exists. Sign in with its password below — or, if it was created with a sign-in link and has no password yet, set one under Authentication → Users in Supabase."
+      );
       return;
     }
 
