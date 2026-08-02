@@ -25,8 +25,10 @@ export const PLATFORM_LABELS: Record<string, string> = {
   youtube: "YouTube",
   reddit: "Reddit",
   twitter: "X / Twitter",
+  instagram: "Instagram",
   linkedin: "LinkedIn",
   news: "News",
+  email: "Email / org",
   other: "Other",
 };
 

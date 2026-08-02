@@ -5,7 +5,17 @@
 
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
-export type Platform = "rss" | "blog" | "youtube" | "reddit" | "twitter" | "linkedin" | "news" | "other";
+export type Platform =
+  | "rss"
+  | "blog"
+  | "youtube"
+  | "reddit"
+  | "twitter"
+  | "instagram"
+  | "linkedin"
+  | "news"
+  | "email"
+  | "other";
 export type Priority = "low" | "medium" | "high" | "critical";
 export type ContentPriority = "low" | "medium" | "high" | "urgent";
 export type SourceStatus = "active" | "paused";

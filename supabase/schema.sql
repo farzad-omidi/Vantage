@@ -52,7 +52,8 @@ create table vantage.sources (
   name text not null,
   handle text,
   platform text not null check (
-    platform in ('rss', 'blog', 'youtube', 'reddit', 'twitter', 'linkedin', 'news', 'other')
+    platform in ('rss', 'blog', 'youtube', 'reddit', 'twitter', 'instagram',
+                 'linkedin', 'news', 'email', 'other')
   ),
   profile_url text,
   feed_url text,
@@ -261,7 +262,8 @@ create table vantage.source_suggestions (
   name text not null,
   handle text,
   platform text not null check (
-    platform in ('rss', 'blog', 'youtube', 'reddit', 'twitter', 'linkedin', 'news', 'other')
+    platform in ('rss', 'blog', 'youtube', 'reddit', 'twitter', 'instagram',
+                 'linkedin', 'news', 'email', 'other')
   ),
   url text,
   reason text,
