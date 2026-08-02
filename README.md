@@ -1,0 +1,144 @@
+# Vantage
+
+**Live:** not yet deployed — see [Deploying](#deploying).
+
+AI-powered social & market intelligence. Monitor accounts and topics across the social web,
+let Claude analyze what's actually relevant, and surface it — with an explanation of why it
+matters and what to do about it — before you'd find it yourself.
+
+Built with Next.js (App Router), Supabase (Postgres + Auth + Realtime-ready), and the
+Anthropic API. No other backend to run.
+
+## What's actually here
+
+This is a real, working MVP, not a mockup — every screen reads and writes real data. What
+it is **not**:
+
+- **Live ingestion works out of the box only for RSS/Atom feeds** — blogs, YouTube channels
+  (`https://www.youtube.com/feeds/videos.xml?channel_id=...`), most subreddits (append
+  `.rss` to any subreddit URL), and many news sites. X/Twitter and LinkedIn don't offer
+  free feeds; monitoring them needs their paid APIs wired into the same adapter pattern
+  (see [Architecture](#architecture) → Ingestion).
+- **No scheduler is running by default.** Ingestion, AI analysis, and discovery all have
+  working `/api/cron/*` routes, but nothing calls them on a timer until you point an
+  external scheduler at them — see [Scheduling](#scheduling-ingestion--analysis).
+- **Single-tenant ownership, not team workspaces.** Every row is scoped to the user who
+  created it. Multi-user collaboration on one workspace is a real next step, not this MVP.
+- **No billing/subscriptions, no email digests, no legal docs** (privacy policy, terms) —
+  needed before a public launch, out of scope here.
+
+## Features in this MVP
+
+- **Magic-link sign-in** — no passwords.
+- **Sources** — add accounts, blogs, and feeds; organize by category and priority; live
+  RSS/Atom sync with a "Sync now" button and per-source status/error tracking.
+- **Topics** — define keywords, phrases, and areas of interest per topic, with priority,
+  language, and region fields; keyword-matched against ingested content automatically.
+- **AI content analysis** — every ingested item is analyzed by Claude for relevance,
+  classification, a summary, a plain-language "why this matters," concrete opportunities,
+  priority, and sentiment.
+- **Intelligent alerts** — auto-generated on high/urgent findings by default, or scoped
+  precisely with custom alert rules (by topic, source, and minimum priority) from Settings.
+- **Discovery engine** — uses Claude's web-search tool to find real, currently active
+  accounts and publications for your topics that you're not tracking yet; review and
+  approve or dismiss each suggestion.
+- **Dashboard** — unread alerts, a 14-day activity chart, top topics this week, and a
+  unified recent-activity feed.
+- **Full-text search** — across every ingested item's title, body, and author.
+- **Knowledge & relationship management** — save sources, add freeform notes, log
+  interactions (contacted, replied, meeting, etc.), and track a relationship stage
+  (new → watching → engaged → partner) per source.
+
+## Getting started
+
+1. Copy `.env.example` to `.env.local` and fill in:
+   - `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` — your Supabase project.
+   - `SUPABASE_SERVICE_ROLE_KEY` — from Supabase project settings → API. Used only in
+     server-only routes (`src/lib/supabase/admin.ts`) that ingest and analyze content on
+     the platform's behalf, bypassing RLS by design — never exposed to the client.
+   - `ANTHROPIC_API_KEY` — from [console.anthropic.com](https://console.anthropic.com/).
+     Powers content analysis and discovery.
+   - `CRON_SECRET` — any random string. Required by the `/api/cron/*` routes so ingestion
+     and analysis can't be triggered by anyone who finds the URL.
+
+2. Apply the database schema in `supabase/schema.sql` to your Supabase project (SQL
+   editor, the Supabase CLI, or the MCP `apply_migration` tool). It creates every table,
+   index, RLS policy, trigger, and RPC the app relies on.
+
+3. Install dependencies and run the dev server:
+
+   ```bash
+   npm install
+   npm run dev
+   ```
+
+   Open [http://localhost:3000](http://localhost:3000).
+
+4. Sign in, add a topic, add an RSS source, and click **Sync now** on it — you should see
+   ingested items with AI analysis within a few seconds.
+
+## Scheduling ingestion & analysis
+
+Three routes do the recurring work; none of them run themselves. Point a scheduler (Vercel
+Cron, a GitHub Actions cron workflow, or any service that can POST on a timer) at each,
+with header `x-cron-secret: <your CRON_SECRET>`:
+
+| Route | Suggested cadence | What it does |
+| --- | --- | --- |
+| `POST /api/cron/sync` | every 15–30 min | Syncs every active, feed-having source across all users. |
+| `POST /api/cron/analyze` | a few minutes after sync | Analyzes any ingested item that doesn't have a `content_analysis` row yet, in bounded batches. |
+| `POST /api/cron/discover` | daily | Runs the discovery engine for every user with active topics. Costs a web-search-enabled model call per topic — keep this infrequent. |
+
+Example Vercel Cron config (`vercel.json`):
+
+```json
+{
+  "crons": [
+    { "path": "/api/cron/sync", "schedule": "*/20 * * * *" },
+    { "path": "/api/cron/analyze", "schedule": "5-59/20 * * * *" },
+    { "path": "/api/cron/discover", "schedule": "0 9 * * *" }
+  ]
+}
+```
+
+(Vercel Cron doesn't send custom headers — either check `request.headers.get("authorization")`
+against `CRON_SECRET` there via a Vercel-specific bearer convention, or trigger these from
+GitHub Actions/an external scheduler that can set `x-cron-secret` directly.)
+
+## Architecture
+
+- **`src/lib/domain` types** — `src/lib/database.types.ts` is the hand-written source of
+  truth for the schema shape (no live Supabase project to generate against yet).
+  Regenerate with the Supabase CLI once one exists, and keep it in sync with
+  `supabase/schema.sql`.
+- **Auth** — `src/lib/supabase/{client,server,proxy}.ts` follow the `@supabase/ssr`
+  cookie-based session pattern; `src/proxy.ts` (this Next.js build's name for
+  middleware) redirects signed-out visitors to `/login`.
+- **Ingestion** (`src/lib/ingestion/`) — `rss.ts` fetches and normalizes RSS/Atom feeds
+  with no API key required; `sync.ts` dedupes against `content_items.content_hash`,
+  keyword-matches new items against active topics, and logs to `ingestion_runs`. To add a
+  paid-API platform (Twitter/X, LinkedIn), write a new fetcher with the same
+  `FeedItem[]`-shaped output and call it from `sync.ts` alongside `fetchFeed`.
+- **AI analysis** (`src/lib/ai/analyze.ts`, `pipeline.ts`) — calls Claude (Haiku 4.5 by
+  default — cheap enough to run on every item; override via `ANTHROPIC_ANALYSIS_MODEL`)
+  with a forced tool call (`submit_analysis`) for reliable structured output, then writes
+  `content_analysis` and raises an `alerts` row when it clears the user's bar (default:
+  high/urgent, or a matching custom `alert_rules` row).
+- **Discovery** (`src/lib/ai/discover.ts`, `discoveryRun.ts`) — gives Claude the
+  `web_search_20260209` server tool (billed per search through the Anthropic API, no
+  separate search API key) plus a forced-shape `propose_sources` tool, scoped to each
+  topic and excluding sources you already track or have seen suggested.
+- **Data access** — every table is row-level-security-scoped to `user_id = auth.uid()`
+  (see `supabase/schema.sql`); the cron and manual-sync routes use the service-role admin
+  client (`src/lib/supabase/admin.ts`) because they write on behalf of the platform, not
+  an authenticated request — never import that client into client-facing code.
+- **Design system** — `src/app/globals.css` defines the token system (neutral slate +
+  one indigo accent + a semantic urgent/high/medium/low scale used consistently for
+  alerts, source priority, and analysis priority) that every component builds on.
+
+## Deploying
+
+Deploy to [Vercel](https://vercel.com/new) (or any Next.js host) and set the environment
+variables from `.env.example` in your hosting provider's dashboard. Then wire up
+[scheduling](#scheduling-ingestion--analysis) — without it, sources only sync when a user
+clicks "Sync now."
