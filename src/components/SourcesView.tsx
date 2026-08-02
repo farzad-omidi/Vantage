@@ -330,9 +330,10 @@ function AddSourceModal({
             placeholder="https://example.com/feed.xml"
           />
           <p className="mini">
-            RSS/Atom URL — works for blogs, YouTube channels ({"channel_id → RSS via /feeds/videos.xml?channel_id="}),
-            and most subreddits (add <code>.rss</code> to the URL). Twitter/X and LinkedIn need their paid APIs — see
-            Settings.
+            RSS/Atom URL — works for blogs and most subreddits (add <code>.rss</code> to the URL). For YouTube, just
+            paste the channel URL (<code>youtube.com/@name</code>) and the feed is resolved on the first sync.
+            Instagram, Twitter/X and LinkedIn have no free feeds — add those without a feed URL to track them as
+            contacts.
           </p>
         </div>
 

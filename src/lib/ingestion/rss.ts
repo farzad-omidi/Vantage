@@ -46,6 +46,58 @@ function textOf(node: unknown): string | null {
   return null;
 }
 
+const YOUTUBE_FEED_PREFIX = "https://www.youtube.com/feeds/videos.xml?channel_id=";
+const CHANNEL_ID = /(UC[\w-]{22})/;
+
+// YouTube publishes a free Atom feed per channel, but only keyed on the opaque
+// channel ID — which is not in the URL you get from the browser for an @handle,
+// /c/ or /user/ channel. Rather than making people dig it out of page source,
+// we accept any channel URL and resolve it here.
+export function isYouTubeChannelUrl(url: string): boolean {
+  return /^https?:\/\/(www\.)?youtube\.com\/(@[\w.-]+|channel\/|c\/|user\/)/i.test(url.trim());
+}
+
+export async function resolveYouTubeFeedUrl(channelUrl: string, timeoutMs = 15000): Promise<string> {
+  // A /channel/UC… URL already carries the ID — no network call needed.
+  const fromPath = channelUrl.match(/youtube\.com\/channel\/(UC[\w-]{22})/i);
+  if (fromPath) return YOUTUBE_FEED_PREFIX + fromPath[1];
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  let res: Response;
+  try {
+    res = await fetch(channelUrl, {
+      signal: controller.signal,
+      // The channel page serves a consent interstitial to unrecognized agents,
+      // and the ID is absent from that page.
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36",
+        "Accept-Language": "en-US,en;q=0.9",
+      },
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+  if (!res.ok) {
+    throw new Error(`YouTube channel page returned ${res.status} ${res.statusText}`);
+  }
+
+  const html = await res.text();
+  const match =
+    html.match(/"channelId":"(UC[\w-]{22})"/) ??
+    html.match(/rel="canonical"[^>]*\/channel\/(UC[\w-]{22})/) ??
+    html.match(/<meta[^>]+itemprop="identifier"[^>]+content="(UC[\w-]{22})"/) ??
+    html.match(CHANNEL_ID);
+  if (!match) {
+    throw new Error(
+      "Couldn't find the channel ID on that YouTube page. Open the channel, click any video, " +
+        "then use the .../channel/UC… form of the URL instead."
+    );
+  }
+  return YOUTUBE_FEED_PREFIX + match[1];
+}
+
 // Fetches and normalizes an RSS 2.0 or Atom feed. No auth, no API key —
 // this is the one ingestion path that works out of the box (see
 // docs/ARCHITECTURE.md for the adapter pattern to add Twitter/LinkedIn's

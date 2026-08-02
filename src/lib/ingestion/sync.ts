@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { Tables } from "@/lib/database.types";
 import type { VantageClient } from "@/lib/supabase/types";
-import { fetchFeed } from "@/lib/ingestion/rss";
+import { fetchFeed, isYouTubeChannelUrl, resolveYouTubeFeedUrl } from "@/lib/ingestion/rss";
 
 type Source = Tables<"sources">;
 
@@ -27,7 +27,7 @@ export async function syncSource(db: VantageClient, source: Source): Promise<Syn
 
   let items;
   try {
-    items = await fetchFeed(source.feed_url);
+    items = await fetchFeed(await resolveFeedUrl(db, source));
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown fetch error";
     await db.from("ingestion_runs").insert({
@@ -94,6 +94,17 @@ export async function syncSource(db: VantageClient, source: Source): Promise<Syn
     .eq("id", source.id);
 
   return { itemsFound: rows.length, itemsNew: newItemIds.length, newItemIds, error: null };
+}
+
+// A YouTube channel URL isn't a feed, but it's what you can actually copy from
+// the browser. Resolve it to the channel's Atom feed once and write the result
+// back, so every later sync is a plain feed fetch.
+async function resolveFeedUrl(db: VantageClient, source: Source): Promise<string> {
+  const feedUrl = source.feed_url!;
+  if (!isYouTubeChannelUrl(feedUrl)) return feedUrl;
+  const resolved = await resolveYouTubeFeedUrl(feedUrl);
+  await db.from("sources").update({ feed_url: resolved }).eq("id", source.id);
+  return resolved;
 }
 
 async function matchNewItemsToTopics(db: VantageClient, userId: string, itemIds: string[]) {

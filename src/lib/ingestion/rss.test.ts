@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseFeedXml } from "@/lib/ingestion/rss";
+import { isYouTubeChannelUrl, parseFeedXml, resolveYouTubeFeedUrl } from "@/lib/ingestion/rss";
 
 const RSS_SAMPLE = `<?xml version="1.0"?>
 <rss version="2.0">
@@ -53,5 +53,27 @@ describe("parseFeedXml", () => {
 
   it("returns an empty array for unrecognized XML", () => {
     expect(parseFeedXml("<xml></xml>")).toEqual([]);
+  });
+});
+
+describe("YouTube channel URLs", () => {
+  it("recognizes handle, channel, c and user forms", () => {
+    expect(isYouTubeChannelUrl("https://www.youtube.com/@yufid")).toBe(true);
+    expect(isYouTubeChannelUrl("https://youtube.com/channel/UCabcdefghijklmnopqrstuv")).toBe(true);
+    expect(isYouTubeChannelUrl("https://www.youtube.com/c/SomeName")).toBe(true);
+    expect(isYouTubeChannelUrl("https://www.youtube.com/user/SomeName")).toBe(true);
+  });
+
+  it("does not treat an existing feed URL or a non-YouTube URL as a channel", () => {
+    expect(
+      isYouTubeChannelUrl("https://www.youtube.com/feeds/videos.xml?channel_id=UCabcdefghijklmnopqrstuv")
+    ).toBe(false);
+    expect(isYouTubeChannelUrl("https://example.com/feed.xml")).toBe(false);
+  });
+
+  it("rewrites a /channel/ URL without touching the network", async () => {
+    await expect(
+      resolveYouTubeFeedUrl("https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv")
+    ).resolves.toBe("https://www.youtube.com/feeds/videos.xml?channel_id=UCabcdefghijklmnopqrstuv");
   });
 });
