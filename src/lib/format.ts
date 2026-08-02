@@ -36,3 +36,18 @@ export function truncate(text: string | null | undefined, max: number): string {
   if (!text) return "";
   return text.length > max ? `${text.slice(0, max).trimEnd()}…` : text;
 }
+
+// 5_600_000 -> "5.6M". Audience figures span four orders of magnitude across a
+// monitored list, so the full number is noise in a table column.
+export function compactNumber(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return "—";
+  const abs = Math.abs(n);
+  if (abs >= 1_000_000_000) return `${trimZero(n / 1_000_000_000)}B`;
+  if (abs >= 1_000_000) return `${trimZero(n / 1_000_000)}M`;
+  if (abs >= 1_000) return `${trimZero(n / 1_000)}K`;
+  return String(n);
+}
+
+function trimZero(value: number): string {
+  return value.toFixed(1).replace(/\.0$/, "");
+}

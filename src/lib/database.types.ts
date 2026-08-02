@@ -85,6 +85,8 @@ export type Database = {
           is_saved: boolean;
           relationship_stage: RelationshipStage;
           avatar_url: string | null;
+          audience_size: number | null;
+          audience_checked_at: string | null;
           description: string | null;
           language: string;
           region: string | null;
@@ -108,6 +110,8 @@ export type Database = {
           is_saved?: boolean;
           relationship_stage?: RelationshipStage;
           avatar_url?: string | null;
+          audience_size?: number | null;
+          audience_checked_at?: string | null;
           description?: string | null;
           language?: string;
           region?: string | null;

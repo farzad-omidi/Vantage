@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { initials, truncate } from "@/lib/format";
+import { compactNumber, initials, truncate } from "@/lib/format";
 
 describe("initials", () => {
   it("returns ? for empty input", () => {
@@ -29,5 +29,25 @@ describe("truncate", () => {
   it("handles null/undefined", () => {
     expect(truncate(null, 5)).toBe("");
     expect(truncate(undefined, 5)).toBe("");
+  });
+});
+
+describe("compactNumber", () => {
+  it("abbreviates thousands, millions and billions", () => {
+    expect(compactNumber(950)).toBe("950");
+    expect(compactNumber(8_097)).toBe("8.1K");
+    expect(compactNumber(5_600_000)).toBe("5.6M");
+    expect(compactNumber(35_600_000)).toBe("35.6M");
+    expect(compactNumber(2_000_000_000)).toBe("2B");
+  });
+
+  it("drops a trailing .0 rather than printing 5.0M", () => {
+    expect(compactNumber(2_000_000)).toBe("2M");
+    expect(compactNumber(1_000)).toBe("1K");
+  });
+
+  it("renders an em dash for a missing count", () => {
+    expect(compactNumber(null)).toBe("—");
+    expect(compactNumber(undefined)).toBe("—");
   });
 });

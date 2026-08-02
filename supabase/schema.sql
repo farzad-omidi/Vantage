@@ -72,6 +72,11 @@ create table vantage.sources (
   language text not null default 'en',
   region text,
 
+  -- Platform-neutral reach figure: YouTube subscribers today, Instagram
+  -- followers once that adapter lands. Null when the platform exposes none.
+  audience_size bigint,
+  audience_checked_at timestamptz,
+
   last_synced_at timestamptz,
   last_sync_status text check (last_sync_status in ('success', 'error')),
   last_sync_error text,

@@ -7,7 +7,7 @@ import type { Tables } from "@/lib/database.types";
 import { Modal } from "@/components/Modal";
 import { PriorityPill, PlatformBadge, StatusDot } from "@/components/Badges";
 import { PLATFORM_LABELS, PLATFORMS_WITH_LIVE_INGESTION } from "@/lib/types";
-import { relativeTime, initials } from "@/lib/format";
+import { relativeTime, initials, compactNumber } from "@/lib/format";
 import { PlusIcon, RefreshIcon, SearchIcon } from "@/components/icons";
 
 type Source = Tables<"sources">;
@@ -138,6 +138,7 @@ export function SourcesView({
               <tr>
                 <th>Source</th>
                 <th>Platform</th>
+                <th>Audience</th>
                 <th>Priority</th>
                 <th>Status</th>
                 <th>Last synced</th>
@@ -164,6 +165,9 @@ export function SourcesView({
                     </td>
                     <td>
                       <PlatformBadge platform={source.platform} />
+                    </td>
+                    <td className="mini">
+                      {source.audience_size != null ? compactNumber(source.audience_size) : "—"}
                     </td>
                     <td>
                       <PriorityPill priority={source.priority} />

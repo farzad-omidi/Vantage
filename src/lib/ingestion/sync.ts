@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { Tables } from "@/lib/database.types";
 import type { VantageClient } from "@/lib/supabase/types";
 import { fetchFeed, isYouTubeChannelUrl, resolveYouTubeFeedUrl } from "@/lib/ingestion/rss";
+import { fetchChannel, feedUrlForChannelId, hasYouTubeApiKey } from "@/lib/ingestion/youtube";
 
 type Source = Tables<"sources">;
 
@@ -81,6 +82,8 @@ export async function syncSource(db: VantageClient, source: Source): Promise<Syn
     await matchNewItemsToTopics(db, source.user_id, newItemIds);
   }
 
+  await refreshYouTubeAudience(db, source);
+
   await db.from("ingestion_runs").insert({
     user_id: source.user_id,
     source_id: source.id,
@@ -99,12 +102,58 @@ export async function syncSource(db: VantageClient, source: Source): Promise<Syn
 // A YouTube channel URL isn't a feed, but it's what you can actually copy from
 // the browser. Resolve it to the channel's Atom feed once and write the result
 // back, so every later sync is a plain feed fetch.
+//
+// With YOUTUBE_API_KEY set this also picks up the subscriber count, which is
+// the only reliable way to rank a large monitored list by actual reach. Without
+// the key it falls back to scraping the channel page for the ID alone.
 async function resolveFeedUrl(db: VantageClient, source: Source): Promise<string> {
   const feedUrl = source.feed_url!;
   if (!isYouTubeChannelUrl(feedUrl)) return feedUrl;
+
+  if (hasYouTubeApiKey()) {
+    const channel = await fetchChannel(feedUrl);
+    if (channel) {
+      const resolved = feedUrlForChannelId(channel.channelId);
+      await db
+        .from("sources")
+        .update({
+          feed_url: resolved,
+          audience_size: channel.subscriberCount,
+          audience_checked_at: new Date().toISOString(),
+          avatar_url: channel.thumbnailUrl,
+        })
+        .eq("id", source.id);
+      return resolved;
+    }
+    // A key that resolves nothing means the handle is wrong, not that the API
+    // is broken — fetchChannel throws on genuine API failures.
+  }
+
   const resolved = await resolveYouTubeFeedUrl(feedUrl);
   await db.from("sources").update({ feed_url: resolved }).eq("id", source.id);
   return resolved;
+}
+
+// Refreshes subscriber count for an already-resolved YouTube feed. Costs one
+// quota unit per source against a 10,000/day allowance.
+async function refreshYouTubeAudience(db: VantageClient, source: Source) {
+  if (source.platform !== "youtube" || !hasYouTubeApiKey()) return;
+  const channelId = source.feed_url?.match(/channel_id=(UC[\w-]{22})/)?.[1];
+  if (!channelId) return;
+  try {
+    const channel = await fetchChannel(channelId);
+    if (!channel) return;
+    await db
+      .from("sources")
+      .update({
+        audience_size: channel.subscriberCount,
+        audience_checked_at: new Date().toISOString(),
+        avatar_url: channel.thumbnailUrl ?? source.avatar_url,
+      })
+      .eq("id", source.id);
+  } catch {
+    // Audience enrichment is a nice-to-have; never fail a sync over it.
+  }
 }
 
 async function matchNewItemsToTopics(db: VantageClient, userId: string, itemIds: string[]) {
