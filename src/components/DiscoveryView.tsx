@@ -33,8 +33,16 @@ export function DiscoveryView({ initialSuggestions }: { initialSuggestions: Sugg
             .eq("status", "new")
             .order("discovered_at", { ascending: false });
           if (data) setSuggestions((prev) => mergeUnique(data, prev));
+          if (body.warning) alert(`Found ${body.suggestionsFound}, but one engine failed: ${body.warning}`);
         } else {
-          alert("No new suggestions found this run — try again after adding more topics.");
+          const reasons = [
+            body.fromClaude === 0 ? "web search found nothing new" : null,
+            body.fromYouTube === 0 ? "YouTube found no untracked channels" : null,
+          ].filter(Boolean);
+          alert(
+            `No new suggestions this run${reasons.length > 0 ? ` — ${reasons.join(", ")}` : ""}.` +
+              (body.warning ? `\n\n${body.warning}` : "")
+          );
         }
       } else {
         alert(`Discovery failed: ${body.error}`);

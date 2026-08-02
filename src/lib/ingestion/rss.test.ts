@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { isYouTubeChannelUrl, parseFeedXml, resolveYouTubeFeedUrl } from "@/lib/ingestion/rss";
-import { channelLookupParam } from "@/lib/ingestion/youtube";
+import { channelLookupParam, extractContacts } from "@/lib/ingestion/youtube";
 
 const RSS_SAMPLE = `<?xml version="1.0"?>
 <rss version="2.0">
@@ -98,5 +98,29 @@ describe("channelLookupParam", () => {
   it("returns null for anything that is not a channel URL", () => {
     expect(channelLookupParam("https://example.com/feed.xml")).toBeNull();
     expect(channelLookupParam("https://www.youtube.com/watch?v=abc")).toBeNull();
+  });
+});
+
+describe("extractContacts", () => {
+  it("pulls a business email and an Indonesian mobile out of a channel bio", () => {
+    const bio = "Kajian harian.\nEndorse/kerja sama: biz@pionicon.com\nWA 0813 9925 1460";
+    expect(extractContacts(bio)).toEqual({
+      emails: ["biz@pionicon.com"],
+      phones: ["081399251460"],
+    });
+  });
+
+  it("normalizes +62 numbers and dedupes repeats", () => {
+    const bio = "WA +62 812 2222 3800 atau +62 812 2222 3800";
+    expect(extractContacts(bio).phones).toEqual(["+6281222223800"]);
+  });
+
+  it("ignores image filenames that look like addresses", () => {
+    expect(extractContacts("logo@2x.png and real@example.com").emails).toEqual(["real@example.com"]);
+  });
+
+  it("returns empty lists for an empty or missing bio", () => {
+    expect(extractContacts(null)).toEqual({ emails: [], phones: [] });
+    expect(extractContacts("Just a description.")).toEqual({ emails: [], phones: [] });
   });
 });

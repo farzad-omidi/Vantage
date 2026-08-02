@@ -419,7 +419,10 @@ begin
     v_suggestion.handle,
     v_suggestion.platform,
     v_suggestion.url,
-    case when v_suggestion.platform in ('rss', 'blog') then v_suggestion.url else null end,
+    -- youtube joins rss/blog here: a channel URL is not itself a feed, but
+    -- syncSource resolves it to one, so an approved channel is syncable
+    -- immediately instead of arriving inert.
+    case when v_suggestion.platform in ('rss', 'blog', 'youtube') then v_suggestion.url else null end,
     v_suggestion.reason
   )
   returning id into v_source_id;
