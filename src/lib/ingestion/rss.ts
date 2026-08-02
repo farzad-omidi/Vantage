@@ -102,24 +102,52 @@ export async function resolveYouTubeFeedUrl(channelUrl: string, timeoutMs = 1500
 // this is the one ingestion path that works out of the box (see
 // docs/ARCHITECTURE.md for the adapter pattern to add Twitter/LinkedIn's
 // paid APIs alongside this).
+// Identifies the crawler honestly, but in the "Mozilla/5.0 (compatible; …)"
+// form every other feed reader uses. A bare product token gets a blanket 403
+// from the WAFs in front of a lot of ordinary WordPress sites.
+const FEED_HEADERS = {
+  "User-Agent": "Mozilla/5.0 (compatible; VantageBot/1.0; +https://github.com/farzad-omidi/vantage)",
+  Accept: "application/rss+xml, application/atom+xml, application/xml;q=0.9, text/xml;q=0.8, */*;q=0.7",
+  "Accept-Language": "en;q=0.9,id;q=0.8",
+} as const;
+
 export async function fetchFeed(feedUrl: string, timeoutMs = 15000): Promise<FeedItem[]> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   let res: Response;
   try {
-    res = await fetch(feedUrl, {
-      signal: controller.signal,
-      headers: { "User-Agent": "VantageBot/1.0 (+https://github.com/farzad-omidi/vantage)" },
-    });
+    res = await fetch(feedUrl, { signal: controller.signal, headers: FEED_HEADERS, redirect: "follow" });
   } finally {
     clearTimeout(timeout);
   }
 
   if (!res.ok) {
-    throw new Error(`Feed returned ${res.status} ${res.statusText}`);
+    throw new Error(describeFeedFailure(res.status, res.statusText));
   }
   const xml = await res.text();
-  return parseFeedXml(xml);
+  const items = parseFeedXml(xml);
+  if (items.length === 0 && !looksLikeFeed(xml)) {
+    throw new Error(
+      "That URL returned a web page, not a feed. Look for the site's RSS link — it's usually /feed, /rss or /feed.xml."
+    );
+  }
+  return items;
+}
+
+function looksLikeFeed(xml: string): boolean {
+  return /<(rss|feed|rdf:RDF)[\s>]/i.test(xml.slice(0, 2000));
+}
+
+// The status code is the whole diagnosis for a feed fetch, so say what it means
+// rather than making someone look it up.
+function describeFeedFailure(status: number, statusText: string): string {
+  const base = `Feed returned ${status}${statusText ? ` ${statusText}` : ""}`;
+  if (status === 403 || status === 406)
+    return `${base} — the site is blocking automated fetches. Some hosts allow the feed only from a browser; there may be no way in short of a proxy.`;
+  if (status === 404) return `${base} — no feed at that URL. Try /feed, /rss, /feed.xml or /?feed=rss2.`;
+  if (status === 429) return `${base} — rate limited. Sync this source less often.`;
+  if (status >= 500) return `${base} — the site is having problems. Worth retrying later.`;
+  return base;
 }
 
 // Pure parsing step, split out from fetchFeed so it's unit-testable without

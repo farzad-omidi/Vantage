@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { isYouTubeChannelUrl, parseFeedXml, resolveYouTubeFeedUrl } from "@/lib/ingestion/rss";
+import { channelLookupParam } from "@/lib/ingestion/youtube";
 
 const RSS_SAMPLE = `<?xml version="1.0"?>
 <rss version="2.0">
@@ -75,5 +76,27 @@ describe("YouTube channel URLs", () => {
     await expect(
       resolveYouTubeFeedUrl("https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv")
     ).resolves.toBe("https://www.youtube.com/feeds/videos.xml?channel_id=UCabcdefghijklmnopqrstuv");
+  });
+});
+
+describe("channelLookupParam", () => {
+  it("maps each channel URL form to the right API lookup", () => {
+    expect(channelLookupParam("https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv")).toEqual({
+      key: "id",
+      value: "UCabcdefghijklmnopqrstuv",
+    });
+    expect(channelLookupParam("https://www.youtube.com/@AdiHidayatOfficial")).toEqual({
+      key: "forHandle",
+      value: "@AdiHidayatOfficial",
+    });
+    expect(channelLookupParam("https://www.youtube.com/user/LegacyName")).toEqual({
+      key: "forUsername",
+      value: "LegacyName",
+    });
+  });
+
+  it("returns null for anything that is not a channel URL", () => {
+    expect(channelLookupParam("https://example.com/feed.xml")).toBeNull();
+    expect(channelLookupParam("https://www.youtube.com/watch?v=abc")).toBeNull();
   });
 });
