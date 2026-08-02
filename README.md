@@ -97,31 +97,39 @@ it is **not**:
 
 ## Scheduling ingestion & analysis
 
-Three routes do the recurring work; none of them run themselves. Point a scheduler (Vercel
-Cron, a GitHub Actions cron workflow, or any service that can POST on a timer) at each,
-with header `x-cron-secret: <your CRON_SECRET>`:
+Three routes do the recurring work; none of them run themselves. A ready-to-use GitHub
+Actions workflow is committed at `.github/workflows/cron.yml`:
 
-| Route | Suggested cadence | What it does |
+| Route | Cadence in the workflow | What it does |
 | --- | --- | --- |
-| `POST /api/cron/sync` | every 15–30 min | Syncs every active, feed-having source across all users. |
-| `POST /api/cron/analyze` | a few minutes after sync | Analyzes any ingested item that doesn't have a `content_analysis` row yet, in bounded batches. |
-| `POST /api/cron/discover` | daily | Runs the discovery engine for every user with active topics. Costs a web-search-enabled model call per topic — keep this infrequent. |
+| `POST /api/cron/sync` | every 30 min | Syncs every active, feed-having source across all users. |
+| `POST /api/cron/analyze` | every 30 min, offset by 10 | Analyzes any ingested item without a `content_analysis` row, 25 per run. |
+| `POST /api/cron/discover` | daily, 02:00 UTC | Runs both discovery engines for every user with active topics. Costs a web-search model call per topic plus YouTube quota — keep it infrequent. |
 
-Example Vercel Cron config (`vercel.json`):
+To switch it on, set these **repository** secrets under Settings → Secrets and variables →
+Actions:
 
-```json
-{
-  "crons": [
-    { "path": "/api/cron/sync", "schedule": "*/20 * * * *" },
-    { "path": "/api/cron/analyze", "schedule": "5-59/20 * * * *" },
-    { "path": "/api/cron/discover", "schedule": "0 9 * * *" }
-  ]
-}
-```
+| Secret | Value |
+| --- | --- |
+| `VANTAGE_URL` | your deployment origin, no trailing slash |
+| `CRON_SECRET` | the same value you set as `CRON_SECRET` in Vercel |
+| `VERCEL_AUTOMATION_BYPASS_SECRET` | **only** if the project keeps Vercel Authentication on — from Vercel → Settings → Deployment Protection → Protection Bypass for Automation |
 
-(Vercel Cron doesn't send custom headers — either check `request.headers.get("authorization")`
-against `CRON_SECRET` there via a Vercel-specific bearer convention, or trigger these from
-GitHub Actions/an external scheduler that can set `x-cron-secret` directly.)
+The server side needs `CRON_SECRET` and `SUPABASE_SERVICE_ROLE_KEY` in Vercel. The sweeps
+run across every user, so they cannot use any one user's session and need the service role;
+this is the only place in the app that does.
+
+`workflow_dispatch` is enabled, so any sweep can be run on demand from the Actions tab
+without waiting for a tick — the fastest way to confirm the wiring works.
+
+Two GitHub Actions caveats worth knowing: scheduled runs are queued rather than guaranteed
+and can be delayed by minutes under load, and GitHub disables schedules on repositories
+with no activity for 60 days.
+
+Both header conventions are accepted: `x-cron-secret` (GitHub Actions, cron-job.org) and
+`Authorization: Bearer $CRON_SECRET` (Vercel Cron, which cannot set custom headers). If you
+would rather use Vercel Cron, note that the Hobby plan allows two cron jobs at daily
+granularity, which is one short and far too coarse for ingestion.
 
 ## Architecture
 

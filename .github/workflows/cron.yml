@@ -1,0 +1,104 @@
+name: Vantage scheduled sweeps
+
+# Vantage's recurring work runs as three HTTP routes; nothing calls them on a
+# timer by itself. GitHub Actions is used rather than Vercel Cron because
+# Vercel's Hobby plan caps cron jobs at two, once per day — too coarse for
+# ingestion, and one job short.
+#
+# Required repository secrets (Settings → Secrets and variables → Actions):
+#   VANTAGE_URL   e.g. https://vantage-zeta-navy.vercel.app  (no trailing slash)
+#   CRON_SECRET   the same value set as CRON_SECRET in Vercel
+#
+# Optional, and only when the project keeps Vercel Authentication enabled:
+#   VERCEL_AUTOMATION_BYPASS_SECRET
+#     Vercel → Project → Settings → Deployment Protection → Protection Bypass
+#     for Automation. Without it, a protected deployment answers these calls
+#     with its own login page instead of running anything.
+
+on:
+  schedule:
+    # Ingest new feed items.
+    - cron: "*/30 * * * *"
+    # Analyse the backlog, offset so it runs behind a sync rather than beside it.
+    - cron: "10,40 * * * *"
+    # Discovery once a day — each run costs a web-search model call per topic
+    # plus YouTube search quota, so this is deliberately infrequent.
+    # 02:00 UTC is 09:00 in Jakarta.
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+    inputs:
+      route:
+        description: Which sweep to run now
+        required: true
+        default: sync
+        type: choice
+        options: [sync, analyze, discover]
+
+concurrency:
+  # A slow sync must not have the next tick pile up behind it.
+  group: vantage-cron-${{ github.event.schedule || inputs.route }}
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Decide which route this trigger maps to
+        id: pick
+        run: |
+          case "${{ github.event.schedule }}" in
+            "*/30 * * * *")  route=sync ;;
+            "10,40 * * * *") route=analyze ;;
+            "0 2 * * *")     route=discover ;;
+            *)               route="${{ inputs.route }}" ;;
+          esac
+          echo "route=$route" >> "$GITHUB_OUTPUT"
+          echo "Running: $route"
+
+      - name: Call the sweep
+        env:
+          VANTAGE_URL: ${{ secrets.VANTAGE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+          ROUTE: ${{ steps.pick.outputs.route }}
+        run: |
+          set -uo pipefail
+
+          if [ -z "${VANTAGE_URL:-}" ] || [ -z "${CRON_SECRET:-}" ]; then
+            echo "::error::VANTAGE_URL and CRON_SECRET repository secrets must both be set."
+            exit 1
+          fi
+
+          args=(-sS --max-time 300 -X POST
+                -H "x-cron-secret: ${CRON_SECRET}"
+                -H "content-type: application/json")
+
+          # Only sent when the deployment is behind Vercel Authentication.
+          if [ -n "${BYPASS:-}" ]; then
+            args+=(-H "x-vercel-protection-bypass: ${BYPASS}"
+                   -H "x-vercel-set-bypass-cookie: false")
+          fi
+
+          # Capture body and status separately so a failure can show both.
+          body=$(curl "${args[@]}" -w "\n%{http_code}" "${VANTAGE_URL}/api/cron/${ROUTE}")
+          status=$(printf '%s' "$body" | tail -n1)
+          payload=$(printf '%s' "$body" | sed '$d')
+
+          echo "HTTP $status"
+          echo "$payload"
+
+          if [ "$status" != "200" ]; then
+            echo "::error::${ROUTE} sweep failed with HTTP ${status}: ${payload}"
+            exit 1
+          fi
+
+          # Surface the numbers on the run summary so the schedule can be
+          # judged without opening logs.
+          {
+            echo "### ${ROUTE} sweep"
+            echo ""
+            echo '```json'
+            echo "$payload"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
