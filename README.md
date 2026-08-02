@@ -40,6 +40,13 @@ it is **not**:
 - **AI content analysis** — every ingested item is analyzed by Claude for relevance,
   classification, a summary, a plain-language "why this matters," concrete opportunities,
   priority, and sentiment.
+- **Read in your own language** — pick a reading language in Settings (English, فارسی,
+  العربية, Bahasa Indonesia and a dozen more) and every summary, "why it matters,"
+  opportunity and alert headline is written in it, whatever the source published in.
+  Titles get a translation alongside the original, so you can still search for what the
+  author actually wrote. Right-to-left languages render with the correct text direction.
+  Content is always analyzed in its *original* language first — translating before
+  judging loses the nuance the judgment depends on.
 - **Intelligent alerts** — auto-generated on high/urgent findings by default, or scoped
   precisely with custom alert rules (by topic, source, and minimum priority) from Settings.
 - **Discovery engine** — uses Claude's web-search tool to find real, currently active

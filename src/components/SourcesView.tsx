@@ -8,6 +8,7 @@ import { Modal } from "@/components/Modal";
 import { PriorityPill, PlatformBadge, StatusDot } from "@/components/Badges";
 import { PLATFORM_LABELS, PLATFORMS_WITH_LIVE_INGESTION } from "@/lib/types";
 import { relativeTime, initials, compactNumber } from "@/lib/format";
+import { DEFAULT_LANGUAGE, LANGUAGES, languageLabel } from "@/lib/languages";
 import { PlusIcon, RefreshIcon, SearchIcon } from "@/components/icons";
 
 type Source = Tables<"sources">;
@@ -246,6 +247,7 @@ function AddSourceModal({
   const [categoryId, setCategoryId] = useState("");
   const [priority, setPriority] = useState("medium");
   const [description, setDescription] = useState("");
+  const [language, setLanguage] = useState(DEFAULT_LANGUAGE);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -274,6 +276,7 @@ function AddSourceModal({
         category_id: categoryId || null,
         priority: priority as Source["priority"],
         description: description.trim() || null,
+        language,
       })
       .select()
       .single();
@@ -362,6 +365,21 @@ function AddSourceModal({
               <option value="critical">Critical</option>
             </select>
           </div>
+        </div>
+
+        <div className="field">
+          <label>Publishes in</label>
+          <select className="select" value={language} onChange={(e) => setLanguage(e.target.value)}>
+            {LANGUAGES.map((l) => (
+              <option key={l.code} value={l.code}>
+                {languageLabel(l)}
+              </option>
+            ))}
+          </select>
+          <p className="mini">
+            Analysis is still written in your reading language (Settings) &mdash; this just records what the source
+            publishes in.
+          </p>
         </div>
 
         <div className="field">

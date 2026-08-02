@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { ContentPriority, Sentiment } from "@/lib/database.types";
+import { DEFAULT_LANGUAGE, languageName } from "@/lib/languages";
 
 // Haiku 4.5 by default — this pipeline runs on every ingested item, so cost
 // and latency matter more than peak reasoning quality. Override via env if a
@@ -21,6 +22,11 @@ export type AnalysisInput = {
   sourceName: string | null;
   sourceDescription: string | null;
   topics: { name: string; description: string | null; keywords: string[] }[];
+  /**
+   * Language the analysis should be WRITTEN in (the reader's language), which
+   * is independent of the language the content was published in.
+   */
+  outputLanguage?: string;
 };
 
 export type AnalysisResult = {
@@ -33,6 +39,7 @@ export type AnalysisResult = {
   priority: ContentPriority;
   sentiment: Sentiment;
   language: string;
+  titleTranslated: string | null;
 };
 
 const ANALYSIS_TOOL: Anthropic.Tool = {
@@ -78,7 +85,11 @@ const ANALYSIS_TOOL: Anthropic.Tool = {
       },
       language: {
         type: "string",
-        description: "ISO 639-1 code of the content's language (e.g. 'en', 'es', 'de').",
+        description: "ISO 639-1 code of the content's ORIGINAL language (e.g. 'en', 'fa', 'id'). Report what the content is written in, not the language you are replying in.",
+      },
+      title_translated: {
+        type: "string",
+        description: "The content's title rendered in the output language. If the title is already in the output language, repeat it unchanged.",
       },
     },
     required: [
@@ -91,13 +102,21 @@ const ANALYSIS_TOOL: Anthropic.Tool = {
       "priority",
       "sentiment",
       "language",
+      "title_translated",
     ],
   },
 };
 
-const SYSTEM_PROMPT = `You are the analysis engine inside Vantage, a social & market intelligence platform. You evaluate one piece of monitored content at a time against the topics the user is tracking, and produce a structured judgment via the submit_analysis tool.
+function systemPrompt(outputLanguage: string): string {
+  const target = languageName(outputLanguage);
+  return `You are the analysis engine inside Vantage, a social & market intelligence platform. You evaluate one piece of monitored content at a time against the topics the user is tracking, and produce a structured judgment via the submit_analysis tool.
 
-Be a skeptical, precise analyst: relevance means substantive connection to a tracked topic, not string overlap. Judge importance from the user's likely goal (monitoring a market, a competitor, a community, a keyword) implied by their topic descriptions. Keep summaries and explanations tight — no filler, no restating the title. Only flag genuine opportunities; an empty list is a correct answer far more often than not. Content may be in any language — analyze it in its original language and report your findings in English, except the 'language' field which reports the content's own language code.`;
+Be a skeptical, precise analyst: relevance means substantive connection to a tracked topic, not string overlap. Judge importance from the user's likely goal (monitoring a market, a competitor, a community, a keyword) implied by their topic descriptions. Keep summaries and explanations tight — no filler, no restating the title. Only flag genuine opportunities; an empty list is a correct answer far more often than not.
+
+LANGUAGE. Monitored content arrives in many languages. Read and reason about it in its original language — never translate before analyzing, because nuance lost in translation is nuance lost from the judgment. Then write every human-readable field (summary, importance_explanation, opportunities, title_translated) in ${target}, whatever the content was written in. Two fields are exceptions: 'language' reports the ISO code of the content's ORIGINAL language, and the enum fields take their fixed English values.
+
+Translate meaning, not words. Keep proper nouns, organisation names, handles and product names in their original form rather than transliterating them — someone acting on this needs to be able to search for the name they will actually encounter. Where a term has no natural equivalent in ${target}, give the ${target} sense and put the original in parentheses once.`;
+}
 
 export async function analyzeContent(input: AnalysisInput): Promise<AnalysisResult> {
   const topicContext =
@@ -121,10 +140,11 @@ CONTENT TITLE: ${input.title ?? "(none)"}
 CONTENT BODY:
 ${(input.body ?? "(no body text)").slice(0, 6000)}`;
 
+  const outputLanguage = input.outputLanguage || DEFAULT_LANGUAGE;
   const response = await getClient().messages.create({
     model: ANALYSIS_MODEL,
     max_tokens: 1024,
-    system: SYSTEM_PROMPT,
+    system: systemPrompt(outputLanguage),
     tools: [ANALYSIS_TOOL],
     tool_choice: { type: "tool", name: "submit_analysis" },
     messages: [{ role: "user", content: userMessage }],
@@ -145,6 +165,7 @@ ${(input.body ?? "(no body text)").slice(0, 6000)}`;
       priority: "low",
       sentiment: "neutral",
       language: "en",
+      titleTranslated: null,
     };
   }
 
@@ -158,6 +179,7 @@ ${(input.body ?? "(no body text)").slice(0, 6000)}`;
     priority: ContentPriority;
     sentiment: Sentiment;
     language: string;
+    title_translated?: string;
   };
 
   return {
@@ -170,5 +192,11 @@ ${(input.body ?? "(no body text)").slice(0, 6000)}`;
     priority: result.priority,
     sentiment: result.sentiment,
     language: result.language,
+    // Only worth storing when it actually differs from the original — a
+    // repeated title is noise in the UI.
+    titleTranslated:
+      result.title_translated && result.title_translated.trim() !== (input.title ?? "").trim()
+        ? result.title_translated.trim()
+        : null,
   };
 }

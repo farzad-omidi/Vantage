@@ -24,6 +24,9 @@ create table vantage.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   email text not null,
   display_name text,
+  -- The language the user wants to READ in. Analysis output is written in this
+  -- language whatever the monitored content was published in.
+  preferred_language text not null default 'en',
   created_at timestamptz not null default now()
 );
 
@@ -184,7 +187,11 @@ create table vantage.content_analysis (
   opportunities text[] not null default '{}',
   priority text not null default 'low' check (priority in ('low', 'medium', 'high', 'urgent')),
   sentiment text check (sentiment in ('positive', 'neutral', 'negative', 'mixed')),
+  -- ISO code of the content's ORIGINAL language.
   language text,
+  -- The item's title in the reader's language. Separate from
+  -- content_items.title so the original is never overwritten and both can show.
+  title_translated text,
 
   model text,
   analyzed_at timestamptz not null default now()

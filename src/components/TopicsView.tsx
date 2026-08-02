@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { LANGUAGES, languageLabel } from "@/lib/languages";
 import type { Tables } from "@/lib/database.types";
 import { Modal } from "@/components/Modal";
 import { PriorityPill, StatusDot } from "@/components/Badges";
@@ -224,7 +225,13 @@ function AddTopicModal({
         <div className="grid grid-2">
           <div className="field">
             <label>Language</label>
-            <input className="input" value={language} onChange={(e) => setLanguage(e.target.value)} placeholder="en" />
+            <select className="select" value={language} onChange={(e) => setLanguage(e.target.value)}>
+              {LANGUAGES.map((l) => (
+                <option key={l.code} value={l.code}>
+                  {languageLabel(l)}
+                </option>
+              ))}
+            </select>
           </div>
           <div className="field">
             <label>Region (optional)</label>

@@ -37,12 +37,14 @@ export type Database = {
           id: string;
           email: string;
           display_name: string | null;
+          preferred_language: string;
           created_at: string;
         };
         Insert: {
           id: string;
           email: string;
           display_name?: string | null;
+          preferred_language?: string;
           created_at?: string;
         };
         Update: Partial<Database["vantage"]["Tables"]["profiles"]["Insert"]>;
@@ -226,6 +228,7 @@ export type Database = {
           priority: ContentPriority;
           sentiment: Sentiment | null;
           language: string | null;
+          title_translated: string | null;
           model: string | null;
           analyzed_at: string;
         };
@@ -242,6 +245,7 @@ export type Database = {
           priority?: ContentPriority;
           sentiment?: Sentiment | null;
           language?: string | null;
+          title_translated?: string | null;
           model?: string | null;
           analyzed_at?: string;
         };

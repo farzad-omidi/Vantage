@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import type { Tables } from "@/lib/database.types";
+import { DEFAULT_LANGUAGE, LANGUAGES, dirFor, languageLabel } from "@/lib/languages";
 
 type Category = Tables<"categories">;
 type AlertRule = Tables<"alert_rules">;
@@ -11,6 +12,7 @@ type AlertRule = Tables<"alert_rules">;
 export function SettingsView({
   email,
   displayName,
+  preferredLanguage,
   categories,
   alertRules,
   topics,
@@ -18,6 +20,7 @@ export function SettingsView({
 }: {
   email: string;
   displayName: string | null;
+  preferredLanguage: string;
   categories: Category[];
   alertRules: AlertRule[];
   topics: { id: string; name: string }[];
@@ -26,6 +29,7 @@ export function SettingsView({
   return (
     <div className="stack" style={{ gap: 24 }}>
       <ProfileCard email={email} displayName={displayName} />
+      <ReadingLanguageCard initial={preferredLanguage} />
       <CategoriesCard initialCategories={categories} />
       <AlertRulesCard initialRules={alertRules} topics={topics} sources={sources} />
       <ConnectorsCard />
@@ -72,6 +76,69 @@ function ProfileCard({ email, displayName }: { email: string; displayName: strin
           </div>
         </div>
       </form>
+    </div>
+  );
+}
+
+// The language the analysis is WRITTEN in. Independent of what the monitored
+// content is published in — Vantage reads Indonesian and answers in Persian if
+// that is what you set here.
+function ReadingLanguageCard({ initial }: { initial: string }) {
+  const router = useRouter();
+  const [language, setLanguage] = useState(initial || DEFAULT_LANGUAGE);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  async function handleSave(next: string) {
+    setLanguage(next);
+    setSaving(true);
+    setSaved(false);
+    const supabase = createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (user) {
+      const { error } = await supabase.from("profiles").update({ preferred_language: next }).eq("id", user.id);
+      if (!error) {
+        setSaved(true);
+        router.refresh();
+      }
+    }
+    setSaving(false);
+  }
+
+  return (
+    <div className="card card-pad">
+      <p className="eyebrow" style={{ marginBottom: 12 }}>
+        Reading language
+      </p>
+      <div className="grid grid-2" style={{ alignItems: "flex-start" }}>
+        <div className="field">
+          <label>Write analysis in</label>
+          <select
+            className="select"
+            value={language}
+            onChange={(e) => handleSave(e.target.value)}
+            disabled={saving}
+            dir={dirFor(language)}
+          >
+            {LANGUAGES.map((l) => (
+              <option key={l.code} value={l.code}>
+                {languageLabel(l)}
+              </option>
+            ))}
+          </select>
+          <p className="mini">
+            {saving ? "Saving…" : saved ? "Saved — applies to items analyzed from now on." : "\u00A0"}
+          </p>
+        </div>
+        <p className="mini">
+          Summaries, &ldquo;why it matters&rdquo;, opportunities and alert headlines are written in this language,
+          whatever the source was published in. Titles get a translation alongside the original, so you can still
+          search for what the author actually wrote. Items already analyzed keep the language they were analyzed in
+          &mdash; this changes what happens next, not the archive.
+        </p>
+      </div>
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import type { VantageClient } from "@/lib/supabase/types";
 import { PRIORITY_ORDER } from "@/lib/types";
 import { analyzeContent } from "@/lib/ai/analyze";
+import { DEFAULT_LANGUAGE } from "@/lib/languages";
 
 // Analyzes one content item, stores the result, and raises an alert if it
 // clears the user's bar for one. Called inline (a few items) after a manual
@@ -16,9 +17,10 @@ export async function analyzeAndStore(db: VantageClient, contentItemId: string):
     .maybeSingle();
   if (existing) return;
 
-  const [{ data: source }, { data: matches }] = await Promise.all([
+  const [{ data: source }, { data: matches }, { data: profile }] = await Promise.all([
     item.source_id ? db.from("sources").select("name, description").eq("id", item.source_id).single() : Promise.resolve({ data: null }),
     db.from("content_topic_matches").select("topic_id").eq("content_item_id", contentItemId),
+    db.from("profiles").select("preferred_language").eq("id", item.user_id).maybeSingle(),
   ]);
 
   const topicIds = (matches ?? []).map((m) => m.topic_id);
@@ -36,6 +38,8 @@ export async function analyzeAndStore(db: VantageClient, contentItemId: string):
     sourceName: source?.name ?? item.author_name,
     sourceDescription: source?.description ?? null,
     topics: (topics ?? []).map((t) => ({ name: t.name, description: t.description, keywords: t.keywords })),
+    // Analysis is written in the reader's language, not the content's.
+    outputLanguage: profile?.preferred_language ?? DEFAULT_LANGUAGE,
   });
 
   await db.from("content_analysis").insert({
@@ -50,6 +54,7 @@ export async function analyzeAndStore(db: VantageClient, contentItemId: string):
     priority: analysis.priority,
     sentiment: analysis.sentiment,
     language: analysis.language,
+    title_translated: analysis.titleTranslated,
     model: process.env.ANTHROPIC_ANALYSIS_MODEL || "claude-haiku-4-5",
   });
 
@@ -95,7 +100,7 @@ async function maybeCreateAlert(
     content_item_id: item.id,
     source_id: item.source_id,
     topic_id: matchedTopicId,
-    title: item.title || (item.body ?? "New relevant content").slice(0, 80),
+    title: analysis.titleTranslated || item.title || (item.body ?? "New relevant content").slice(0, 80),
     message: analysis.summary,
     priority: analysis.priority,
   });

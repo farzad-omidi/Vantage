@@ -3,7 +3,7 @@ import { requireViewer } from "@/lib/viewer";
 import { SettingsView } from "@/components/SettingsView";
 
 export default async function SettingsPage() {
-  const { supabase, user, email, displayName, unreadAlerts } = await requireViewer();
+  const { supabase, user, email, displayName, preferredLanguage, unreadAlerts } = await requireViewer();
 
   const [{ data: categories }, { data: alertRules }, { data: topics }, { data: sources }] = await Promise.all([
     supabase.from("categories").select("*").eq("user_id", user.id).order("kind").order("sort_order"),
@@ -18,12 +18,13 @@ export default async function SettingsPage() {
         <div className="page-header">
           <div>
             <h1 className="page-title">Settings</h1>
-            <p className="page-subtitle">Profile, categories, and alert rules.</p>
+            <p className="page-subtitle">Profile, reading language, categories, and alert rules.</p>
           </div>
         </div>
         <SettingsView
           email={email}
           displayName={displayName}
+          preferredLanguage={preferredLanguage}
           categories={categories ?? []}
           alertRules={alertRules ?? []}
           topics={topics ?? []}

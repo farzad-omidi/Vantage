@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Tables } from "@/lib/database.types";
 import { PriorityPill, SentimentPill, ClassificationBadge } from "@/components/Badges";
 import { relativeTime, truncate } from "@/lib/format";
+import { dirFor, languageName } from "@/lib/languages";
 import { ExternalLinkIcon, LightbulbIcon } from "@/components/icons";
 
 type ContentItem = Tables<"content_items">;
@@ -17,6 +18,12 @@ export function ContentCard({
   sourceLink?: boolean;
 }) {
   const analysis = item.analysis;
+  // The reader's language is whatever the analysis was written in; the item's
+  // own language is what it was published in. They differ often, and each half
+  // of the card needs its own direction.
+  const readingDir = dirFor(analysis?.title_translated ? readingLanguageOf(analysis) : null);
+  const sourceDir = dirFor(analysis?.language);
+  const translated = analysis?.title_translated?.trim() || null;
 
   return (
     <div className="card card-pad">
@@ -31,7 +38,29 @@ export function ContentCard({
       </div>
 
       <div style={{ marginTop: 10 }}>
-        {item.title && <h3 style={{ fontSize: 14.5, fontWeight: 700, marginBottom: 4 }}>{item.title}</h3>}
+        {translated ? (
+          <>
+            <h3 dir={readingDir} style={{ fontSize: 14.5, fontWeight: 700, marginBottom: 2 }}>
+              {translated}
+            </h3>
+            {/* The original stays visible: it is what you would search for, and
+                what the author actually wrote. */}
+            <p
+              dir={sourceDir}
+              className="mini"
+              style={{ marginBottom: 4, fontStyle: "italic" }}
+              title={`Original title (${languageName(analysis?.language)})`}
+            >
+              {item.title}
+            </p>
+          </>
+        ) : (
+          item.title && (
+            <h3 dir={sourceDir} style={{ fontSize: 14.5, fontWeight: 700, marginBottom: 4 }}>
+              {item.title}
+            </h3>
+          )
+        )}
         <p className="mini" style={{ marginBottom: 4 }}>
           {sourceLink && item.source_id ? (
             <Link href={`/sources/${item.source_id}`} style={{ fontWeight: 600, color: "var(--ink)" }}>
@@ -42,11 +71,18 @@ export function ContentCard({
           )}
           {item.author_handle && ` · ${item.author_handle}`}
         </p>
-        {item.body && <p style={{ color: "var(--muted)", fontSize: 13.5 }}>{truncate(item.body, 280)}</p>}
+        {item.body && (
+          <p dir={sourceDir} style={{ color: "var(--muted)", fontSize: 13.5 }}>
+            {truncate(item.body, 280)}
+          </p>
+        )}
       </div>
 
       {analysis?.summary && (
-        <div style={{ marginTop: 12, padding: "10px 12px", background: "var(--surface2)", borderRadius: "var(--r-md)" }}>
+        <div
+          dir={readingDir}
+          style={{ marginTop: 12, padding: "10px 12px", background: "var(--surface2)", borderRadius: "var(--r-md)" }}
+        >
           <p className="eyebrow" style={{ marginBottom: 4 }}>
             AI summary
           </p>
@@ -86,4 +122,15 @@ export function ContentCard({
       </div>
     </div>
   );
+}
+
+// The analysis rows do not store the language they were written in — it is the
+// profile's reading language at the time. Inferring it from the translated
+// title is enough to get the text direction right without another join.
+function readingLanguageOf(analysis: Analysis): string | null {
+  const text = analysis.title_translated ?? analysis.summary;
+  if (!text) return null;
+  // Arabic-script block covers Persian, Arabic and Urdu, which is all the RTL
+  // this needs to distinguish.
+  return /[\u0600-\u06FF\u0750-\u077F]/.test(text) ? "fa" : "en";
 }
