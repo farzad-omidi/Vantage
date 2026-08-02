@@ -33,6 +33,11 @@ export function SourcesView({
   const [platformFilter, setPlatformFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [syncingId, setSyncingId] = useState<string | null>(null);
+  const [syncingAll, setSyncingAll] = useState(false);
+
+  const syncableCount = sources.filter(
+    (s) => PLATFORMS_WITH_LIVE_INGESTION.has(s.platform) && s.feed_url && s.status === "active"
+  ).length;
 
   const filtered = useMemo(() => {
     return sources.filter((s) => {
@@ -73,6 +78,30 @@ export function SourcesView({
       }
     } finally {
       setSyncingId(null);
+    }
+  }
+
+  async function handleSyncAll() {
+    setSyncingAll(true);
+    try {
+      const res = await fetch("/api/sources/sync-all", { method: "POST" });
+      const body = await res.json();
+      if (!res.ok) {
+        alert(`Sync all failed: ${body.error}`);
+        return;
+      }
+      router.refresh();
+      const failures = (body.results ?? []).filter((r: { ok: boolean }) => !r.ok);
+      const lines = [
+        `${body.synced} synced, ${body.failed} failed — ${body.itemsNew} new item${body.itemsNew === 1 ? "" : "s"}.`,
+      ];
+      if (failures.length > 0) {
+        lines.push("", "Failed:");
+        for (const f of failures) lines.push(`• ${f.name} — ${f.error}`);
+      }
+      alert(lines.join("\n"));
+    } finally {
+      setSyncingAll(false);
     }
   }
 
@@ -121,6 +150,12 @@ export function SourcesView({
           <option value="active">Active</option>
           <option value="paused">Paused</option>
         </select>
+        {syncableCount > 0 && (
+          <button className="ghost" onClick={handleSyncAll} disabled={syncingAll} title="Sync every active feed">
+            <RefreshIcon size={15} className={syncingAll ? "spin" : ""} />
+            {syncingAll ? "Syncing all…" : `Sync all (${syncableCount})`}
+          </button>
+        )}
         <button className="primary" onClick={() => setShowAdd(true)}>
           <PlusIcon size={15} />
           Add source
