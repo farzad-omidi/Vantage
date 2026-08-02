@@ -13,12 +13,21 @@ export async function POST(request: NextRequest) {
   const unauthorized = requireCronSecret(request);
   if (unauthorized) return unauthorized;
 
-  const admin = createAdminClient();
+  const db = createAdminClient();
+  if (!db) {
+    return NextResponse.json(
+      { error: "Scheduled analysis needs SUPABASE_SERVICE_ROLE_KEY. Manual 'Sync now' analyzes inline without it." },
+      { status: 503 }
+    );
+  }
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return NextResponse.json({ error: "Analysis needs ANTHROPIC_API_KEY." }, { status: 503 });
+  }
 
-  const { data: analyzed } = await admin.from("content_analysis").select("content_item_id");
+  const { data: analyzed } = await db.from("content_analysis").select("content_item_id");
   const analyzedIds = new Set((analyzed ?? []).map((a) => a.content_item_id));
 
-  const { data: recentItems } = await admin
+  const { data: recentItems } = await db
     .from("content_items")
     .select("id")
     .order("fetched_at", { ascending: false })
@@ -30,7 +39,7 @@ export async function POST(request: NextRequest) {
   let failed = 0;
   for (const id of pending) {
     try {
-      await analyzeAndStore(admin, id);
+      await analyzeAndStore(db, id);
       succeeded += 1;
     } catch {
       failed += 1;

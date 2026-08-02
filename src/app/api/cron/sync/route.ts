@@ -11,8 +11,15 @@ export async function POST(request: NextRequest) {
   const unauthorized = requireCronSecret(request);
   if (unauthorized) return unauthorized;
 
-  const admin = createAdminClient();
-  const { data: sources, error } = await admin
+  const db = createAdminClient();
+  if (!db) {
+    return NextResponse.json(
+      { error: "Scheduled sync needs SUPABASE_SERVICE_ROLE_KEY. Manual 'Sync now' works without it." },
+      { status: 503 }
+    );
+  }
+
+  const { data: sources, error } = await db
     .from("sources")
     .select("*")
     .eq("status", "active")
@@ -28,7 +35,7 @@ export async function POST(request: NextRequest) {
   let errors = 0;
 
   for (const source of sources ?? []) {
-    const result = await syncSource(admin, source);
+    const result = await syncSource(db, source);
     itemsFound += result.itemsFound;
     itemsNew += result.itemsNew;
     if (result.error) errors += 1;

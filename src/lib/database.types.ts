@@ -20,7 +20,7 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.5";
   };
-  public: {
+  vantage: {
     Tables: {
       profiles: {
         Row: {
@@ -35,7 +35,7 @@ export type Database = {
           display_name?: string | null;
           created_at?: string;
         };
-        Update: Partial<Database["public"]["Tables"]["profiles"]["Insert"]>;
+        Update: Partial<Database["vantage"]["Tables"]["profiles"]["Insert"]>;
         Relationships: [];
       };
       categories: {
@@ -57,7 +57,7 @@ export type Database = {
           sort_order?: number;
           created_at?: string;
         };
-        Update: Partial<Database["public"]["Tables"]["categories"]["Insert"]>;
+        Update: Partial<Database["vantage"]["Tables"]["categories"]["Insert"]>;
         Relationships: [];
       };
       sources: {
@@ -107,7 +107,7 @@ export type Database = {
           created_at?: string;
           updated_at?: string;
         };
-        Update: Partial<Database["public"]["Tables"]["sources"]["Insert"]>;
+        Update: Partial<Database["vantage"]["Tables"]["sources"]["Insert"]>;
         Relationships: [];
       };
       topics: {
@@ -139,7 +139,7 @@ export type Database = {
           created_at?: string;
           updated_at?: string;
         };
-        Update: Partial<Database["public"]["Tables"]["topics"]["Insert"]>;
+        Update: Partial<Database["vantage"]["Tables"]["topics"]["Insert"]>;
         Relationships: [];
       };
       content_items: {
@@ -177,7 +177,7 @@ export type Database = {
           raw?: Json | null;
           created_at?: string;
         };
-        Update: Partial<Database["public"]["Tables"]["content_items"]["Insert"]>;
+        Update: Partial<Database["vantage"]["Tables"]["content_items"]["Insert"]>;
         Relationships: [];
       };
       content_topic_matches: {
@@ -195,7 +195,7 @@ export type Database = {
           match_reason?: "keyword" | "ai";
           created_at?: string;
         };
-        Update: Partial<Database["public"]["Tables"]["content_topic_matches"]["Insert"]>;
+        Update: Partial<Database["vantage"]["Tables"]["content_topic_matches"]["Insert"]>;
         Relationships: [];
       };
       content_analysis: {
@@ -231,7 +231,7 @@ export type Database = {
           model?: string | null;
           analyzed_at?: string;
         };
-        Update: Partial<Database["public"]["Tables"]["content_analysis"]["Insert"]>;
+        Update: Partial<Database["vantage"]["Tables"]["content_analysis"]["Insert"]>;
         Relationships: [];
       };
       alerts: {
@@ -259,7 +259,7 @@ export type Database = {
           is_read?: boolean;
           created_at?: string;
         };
-        Update: Partial<Database["public"]["Tables"]["alerts"]["Insert"]>;
+        Update: Partial<Database["vantage"]["Tables"]["alerts"]["Insert"]>;
         Relationships: [];
       };
       alert_rules: {
@@ -285,7 +285,7 @@ export type Database = {
           active?: boolean;
           created_at?: string;
         };
-        Update: Partial<Database["public"]["Tables"]["alert_rules"]["Insert"]>;
+        Update: Partial<Database["vantage"]["Tables"]["alert_rules"]["Insert"]>;
         Relationships: [];
       };
       source_notes: {
@@ -303,7 +303,7 @@ export type Database = {
           note: string;
           created_at?: string;
         };
-        Update: Partial<Database["public"]["Tables"]["source_notes"]["Insert"]>;
+        Update: Partial<Database["vantage"]["Tables"]["source_notes"]["Insert"]>;
         Relationships: [];
       };
       source_interactions: {
@@ -325,7 +325,7 @@ export type Database = {
           occurred_at?: string;
           created_at?: string;
         };
-        Update: Partial<Database["public"]["Tables"]["source_interactions"]["Insert"]>;
+        Update: Partial<Database["vantage"]["Tables"]["source_interactions"]["Insert"]>;
         Relationships: [];
       };
       source_suggestions: {
@@ -358,7 +358,7 @@ export type Database = {
           status?: SuggestionStatus;
           discovered_at?: string;
         };
-        Update: Partial<Database["public"]["Tables"]["source_suggestions"]["Insert"]>;
+        Update: Partial<Database["vantage"]["Tables"]["source_suggestions"]["Insert"]>;
         Relationships: [];
       };
       ingestion_runs: {
@@ -382,7 +382,7 @@ export type Database = {
           error?: string | null;
           ran_at?: string;
         };
-        Update: Partial<Database["public"]["Tables"]["ingestion_runs"]["Insert"]>;
+        Update: Partial<Database["vantage"]["Tables"]["ingestion_runs"]["Insert"]>;
         Relationships: [];
       };
     };
@@ -417,7 +417,7 @@ export type Database = {
   };
 };
 
-export type Tables<T extends keyof Database["public"]["Tables"]> = Database["public"]["Tables"][T]["Row"];
-export type TablesInsert<T extends keyof Database["public"]["Tables"]> = Database["public"]["Tables"][T]["Insert"];
-export type TablesUpdate<T extends keyof Database["public"]["Tables"]> = Database["public"]["Tables"][T]["Update"];
-export type Views<T extends keyof Database["public"]["Views"]> = Database["public"]["Views"][T]["Row"];
+export type Tables<T extends keyof Database["vantage"]["Tables"]> = Database["vantage"]["Tables"][T]["Row"];
+export type TablesInsert<T extends keyof Database["vantage"]["Tables"]> = Database["vantage"]["Tables"][T]["Insert"];
+export type TablesUpdate<T extends keyof Database["vantage"]["Tables"]> = Database["vantage"]["Tables"][T]["Update"];
+export type Views<T extends keyof Database["vantage"]["Views"]> = Database["vantage"]["Views"][T]["Row"];

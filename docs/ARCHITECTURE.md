@@ -30,6 +30,35 @@ user already told the system to watch, it uses Claude with live web search to su
 *new* sources for a topic — closing the loop from "I know what I'm looking for" to "I
 found people/publications I didn't know existed."
 
+## Deployment: why a dedicated `vantage` Postgres schema
+
+Vantage's tables live in a `vantage` schema, not `public`. The reason is concrete rather
+than stylistic: Supabase's free tier caps an org at two active projects, so in practice a
+Vantage instance often has to share a project with another app. Sharing `public` would
+collide immediately — `profiles` and `categories` are near-universal table names, and
+Supabase apps conventionally hang a trigger called `on_auth_user_created` off `auth.users`,
+which can only exist once per database.
+
+Namespacing solves all three at once:
+
+- Tables can keep their natural names (`sources`, not `vantage_sources`).
+- The signup trigger is `on_auth_user_created_vantage`, so it coexists with another app's
+  and both fire independently, each populating its own profile table.
+- `vantage.handle_new_user()` and `vantage.set_updated_at()` don't shadow same-named
+  functions in `public`.
+
+The cost is two extra deployment steps, both handled in `supabase/schema.sql`: a custom
+schema starts with **no grants**, so `usage`/`select`/`insert`/... must be granted to
+`anon`, `authenticated`, and `service_role` explicitly (RLS still governs every row); and
+PostgREST only serves schemas on its exposed list, so `vantage` has to be added there. The
+app side is a one-liner — every Supabase client passes `db: { schema: "vantage" }`, and the
+generated `Database` type is keyed on `vantage` instead of `public`.
+
+Note that the two apps still share one `auth.users` pool: a person who signs up for either
+app exists in both. That's an acceptable consequence of sharing a project, and it
+disappears the moment Vantage gets a project of its own — the only change needed is the
+connection URL, since nothing in the schema depends on the co-tenant.
+
 ## Why single-tenant ownership, not workspaces
 
 Every table carries `user_id` and is RLS-scoped to `auth.uid()` directly (see
@@ -125,15 +154,18 @@ unsent alerts per rule and emails a summary — the data model doesn't need to c
   duplicating what RLS already enforces, by design (don't maintain two authorization
   systems that can drift).
 - **The service-role client is isolated** (`src/lib/supabase/admin.ts`) and only ever
-  imported from `src/app/api/cron/*` and `src/app/api/sources/[id]/sync` — both of which
-  either verify a `CRON_SECRET` header or an authenticated user session before doing any
-  writes. It is never imported into a client component or a page that renders
-  user-supplied data without that check.
-- **`content_items`, `content_analysis`, `content_topic_matches`, and
-  `source_suggestions` have no client-facing INSERT policy** — only the service-role
-  routes write to them. This means even a compromised client session can't forge fake
-  "AI analysis" or inject fabricated content into another user's feed; it can only read
-  and manage its own rows.
+  imported from `src/app/api/cron/*`, which verifies a `CRON_SECRET` header before doing
+  anything. It is never imported into a client component or a user-facing route. It also
+  returns `null` when the key is absent, so a deployment without a service-role key runs
+  fine — only the scheduled sweeps are unavailable.
+- **Ingestion and analysis run on the user's own session, not the service role.** Writes to
+  `content_items`, `content_analysis`, `content_topic_matches`, `alerts`, and
+  `source_suggestions` are governed by `with check (user_id = auth.uid())` INSERT policies.
+  That keeps the property that actually matters — nobody can inject content or forged
+  analysis into *someone else's* feed — while letting the whole app work without a secret
+  key. A user forging rows in their own feed only misleads themselves. The earlier design
+  required the service role for this; scoping the policies per-user is strictly better,
+  because it shrinks the blast radius of the one credential that bypasses RLS entirely.
 - **RSS fetches go through a 15-second timeout and a declared User-Agent**, and parsed
   HTML is stripped to plain text before storage (`stripHtml` in `rss.ts`) — ingested
   content is never rendered as HTML in the UI, only as plain text, so a malicious feed

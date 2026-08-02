@@ -1,14 +1,13 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { syncSource } from "@/lib/ingestion/sync";
 import { analyzeAndStore } from "@/lib/ai/pipeline";
 
-// Manual "Sync now" — the request is authenticated as the signed-in user
-// (verified below), but the actual ingestion writes go through the admin
-// client, since content_items has no client-facing insert policy (see
-// supabase/schema.sql). Also runs AI analysis inline on a small batch of the
-// new items so the UI feels responsive; the cron sweep catches the rest.
+// Manual "Sync now". Runs entirely on the signed-in user's session — RLS keeps
+// every read and write scoped to their own rows, so no service-role key is
+// needed for the app to be fully functional. Also runs AI analysis inline on a
+// small batch of the new items so the UI feels responsive; the analyze cron
+// picks up anything beyond that.
 const INLINE_ANALYSIS_LIMIT = 5;
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -26,19 +25,27 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ error: "Source not found" }, { status: 404 });
   }
 
-  const admin = createAdminClient();
-  const result = await syncSource(admin, source);
+  const result = await syncSource(supabase, source);
 
   if (result.error) {
     return NextResponse.json({ error: result.error }, { status: 502 });
   }
 
+  // Analysis is best-effort: a missing/rate-limited ANTHROPIC_API_KEY must not
+  // fail the sync, since the ingested content is still useful on its own.
   const toAnalyze = result.newItemIds.slice(0, INLINE_ANALYSIS_LIMIT);
-  await Promise.all(toAnalyze.map((itemId) => analyzeAndStore(admin, itemId).catch(() => null)));
+  const analyzed = await Promise.all(
+    toAnalyze.map((itemId) =>
+      analyzeAndStore(supabase, itemId).then(
+        () => true,
+        () => false
+      )
+    )
+  );
 
   return NextResponse.json({
     itemsFound: result.itemsFound,
     itemsNew: result.itemsNew,
-    itemsAnalyzed: toAnalyze.length,
+    itemsAnalyzed: analyzed.filter(Boolean).length,
   });
 }

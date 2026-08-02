@@ -1,9 +1,8 @@
 import { createHash } from "node:crypto";
-import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database, Tables } from "@/lib/database.types";
+import type { Tables } from "@/lib/database.types";
+import type { VantageClient } from "@/lib/supabase/types";
 import { fetchFeed } from "@/lib/ingestion/rss";
 
-type AdminClient = SupabaseClient<Database>;
 type Source = Tables<"sources">;
 
 export type SyncResult = {
@@ -21,7 +20,7 @@ function contentHash(userId: string, sourceId: string, externalId: string): stri
 // new items against the user's active topic keywords, and logs the run.
 // Called both by the manual "Sync now" button (src/app/api/sources/[id]/sync)
 // and the scheduled cron sweep (src/app/api/cron/sync).
-export async function syncSource(admin: AdminClient, source: Source): Promise<SyncResult> {
+export async function syncSource(db: VantageClient, source: Source): Promise<SyncResult> {
   if (!source.feed_url) {
     return { itemsFound: 0, itemsNew: 0, newItemIds: [], error: "This source has no feed URL configured." };
   }
@@ -31,13 +30,13 @@ export async function syncSource(admin: AdminClient, source: Source): Promise<Sy
     items = await fetchFeed(source.feed_url);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown fetch error";
-    await admin.from("ingestion_runs").insert({
+    await db.from("ingestion_runs").insert({
       user_id: source.user_id,
       source_id: source.id,
       status: "error",
       error: message,
     });
-    await admin
+    await db
       .from("sources")
       .update({ last_synced_at: new Date().toISOString(), last_sync_status: "error", last_sync_error: message })
       .eq("id", source.id);
@@ -60,13 +59,13 @@ export async function syncSource(admin: AdminClient, source: Source): Promise<Sy
 
   let newItemIds: string[] = [];
   if (rows.length > 0) {
-    const { data: inserted, error: insertError } = await admin
+    const { data: inserted, error: insertError } = await db
       .from("content_items")
       .upsert(rows, { onConflict: "user_id,content_hash", ignoreDuplicates: true })
       .select("id");
 
     if (insertError) {
-      await admin.from("ingestion_runs").insert({
+      await db.from("ingestion_runs").insert({
         user_id: source.user_id,
         source_id: source.id,
         status: "error",
@@ -79,17 +78,17 @@ export async function syncSource(admin: AdminClient, source: Source): Promise<Sy
   }
 
   if (newItemIds.length > 0) {
-    await matchNewItemsToTopics(admin, source.user_id, newItemIds);
+    await matchNewItemsToTopics(db, source.user_id, newItemIds);
   }
 
-  await admin.from("ingestion_runs").insert({
+  await db.from("ingestion_runs").insert({
     user_id: source.user_id,
     source_id: source.id,
     status: "success",
     items_found: rows.length,
     items_new: newItemIds.length,
   });
-  await admin
+  await db
     .from("sources")
     .update({ last_synced_at: new Date().toISOString(), last_sync_status: "success", last_sync_error: null })
     .eq("id", source.id);
@@ -97,15 +96,15 @@ export async function syncSource(admin: AdminClient, source: Source): Promise<Sy
   return { itemsFound: rows.length, itemsNew: newItemIds.length, newItemIds, error: null };
 }
 
-async function matchNewItemsToTopics(admin: AdminClient, userId: string, itemIds: string[]) {
-  const { data: topics } = await admin
+async function matchNewItemsToTopics(db: VantageClient, userId: string, itemIds: string[]) {
+  const { data: topics } = await db
     .from("topics")
     .select("id, keywords")
     .eq("user_id", userId)
     .eq("status", "active");
   if (!topics || topics.length === 0) return;
 
-  const { data: newItems } = await admin.from("content_items").select("id, title, body").in("id", itemIds);
+  const { data: newItems } = await db.from("content_items").select("id, title, body").in("id", itemIds);
   if (!newItems) return;
 
   const matches: { content_item_id: string; topic_id: string; user_id: string; match_reason: "keyword" }[] = [];
@@ -122,6 +121,6 @@ async function matchNewItemsToTopics(admin: AdminClient, userId: string, itemIds
   }
 
   if (matches.length > 0) {
-    await admin.from("content_topic_matches").upsert(matches, { onConflict: "content_item_id,topic_id", ignoreDuplicates: true });
+    await db.from("content_topic_matches").upsert(matches, { onConflict: "content_item_id,topic_id", ignoreDuplicates: true });
   }
 }

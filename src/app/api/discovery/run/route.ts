@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { runDiscoveryForUser } from "@/lib/ai/discoveryRun";
 
 export async function POST() {
@@ -12,9 +11,15 @@ export async function POST() {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  const admin = createAdminClient();
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return NextResponse.json(
+      { error: "Discovery needs an ANTHROPIC_API_KEY to be configured on the server." },
+      { status: 503 }
+    );
+  }
+
   try {
-    const result = await runDiscoveryForUser(admin, user.id);
+    const result = await runDiscoveryForUser(supabase, user.id);
     return NextResponse.json(result);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Discovery failed";

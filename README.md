@@ -53,17 +53,25 @@ it is **not**:
 
 1. Copy `.env.example` to `.env.local` and fill in:
    - `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` — your Supabase project.
-   - `SUPABASE_SERVICE_ROLE_KEY` — from Supabase project settings → API. Used only in
-     server-only routes (`src/lib/supabase/admin.ts`) that ingest and analyze content on
-     the platform's behalf, bypassing RLS by design — never exposed to the client.
    - `ANTHROPIC_API_KEY` — from [console.anthropic.com](https://console.anthropic.com/).
-     Powers content analysis and discovery.
-   - `CRON_SECRET` — any random string. Required by the `/api/cron/*` routes so ingestion
-     and analysis can't be triggered by anyone who finds the URL.
+     Powers content analysis and discovery. Without it everything else still works and
+     those two features report that they're unconfigured.
+   - `SUPABASE_SERVICE_ROLE_KEY` and `CRON_SECRET` — **optional**, and only needed for the
+     scheduled `/api/cron/*` sweeps, which run across every user and so can't use any one
+     user's session. The in-app "Sync now" and "Run discovery" buttons run on the signed-in
+     user's own RLS-scoped session and need neither.
 
 2. Apply the database schema in `supabase/schema.sql` to your Supabase project (SQL
-   editor, the Supabase CLI, or the MCP `apply_migration` tool). It creates every table,
-   index, RLS policy, trigger, and RPC the app relies on.
+   editor, the Supabase CLI, or the MCP `apply_migration` tool). It creates the `vantage`
+   schema and every table, index, RLS policy, trigger, and RPC the app relies on.
+
+   Vantage's tables deliberately live in a dedicated **`vantage`** Postgres schema rather
+   than `public`, so it can share a Supabase project with other apps without colliding on
+   common names (`profiles`, `categories`) or on the `on_auth_user_created` trigger. After
+   applying the schema, make sure `vantage` is listed under **Settings → API → Exposed
+   schemas** in the Supabase dashboard (the last statement in `schema.sql` sets this, but
+   the dashboard toggle is the reliable fallback if queries come back with a
+   "schema must be one of the following" / `PGRST106` error).
 
 3. Install dependencies and run the dev server:
 
@@ -138,7 +146,22 @@ GitHub Actions/an external scheduler that can set `x-cron-secret` directly.)
 
 ## Deploying
 
-Deploy to [Vercel](https://vercel.com/new) (or any Next.js host) and set the environment
-variables from `.env.example` in your hosting provider's dashboard. Then wire up
-[scheduling](#scheduling-ingestion--analysis) — without it, sources only sync when a user
-clicks "Sync now."
+Import this repo at [vercel.com/new](https://vercel.com/new) and set the environment
+variables from `.env.example` during the import. Importing from git (rather than uploading
+a build) is what makes later `git push`es redeploy automatically.
+
+Only two variables are needed for a working deployment:
+
+| Variable | Value |
+| --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL` | your Supabase project URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | the project's publishable / anon key |
+
+Add `ANTHROPIC_API_KEY` to switch on AI analysis and discovery, and
+`SUPABASE_SERVICE_ROLE_KEY` + `CRON_SECRET` only if you also want the
+[scheduled sweeps](#scheduling-ingestion--analysis) — without those, sources sync when a
+user clicks "Sync now".
+
+One Supabase setting matters for auth: under **Authentication → URL Configuration**, add
+your deployment origin to the redirect allow-list (e.g. `https://<your-app>.vercel.app/**`)
+so magic-link sign-in returns to the right place.
